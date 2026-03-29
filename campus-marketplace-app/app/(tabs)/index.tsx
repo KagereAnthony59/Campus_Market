@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -10,8 +10,13 @@ import {
   TextInput,
   ScrollView,
   StatusBar,
-  Modal
+  Modal,
+  Image,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
 export default function FeedScreen() {
@@ -21,10 +26,33 @@ export default function FeedScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   
-  // Modal state for Supplier
+  // New State for UI Features
+  const [isDarkTheme, setIsDarkTheme] = useState(true);
   const [selectedSupplierProduct, setSelectedSupplierProduct] = useState<any>(null);
 
+  // User Profile State
+  const [isProfileModalVisible, setIsProfileModalVisible] = useState(false);
+  const [userName, setUserName] = useState('Anthony Kagere');
+  const [userAbout, setUserAbout] = useState('Computer Science Student at UMU');
+  const [userPhone, setUserPhone] = useState('+256 700 000 000');
+  const [userAvatar, setUserAvatar] = useState('https://i.pravatar.cc/150?img=11');
+
   const categories = ['All', 'Electronics', 'Books', 'Furniture', 'Clothing', 'Other'];
+
+  const theme = useMemo(() => {
+    return {
+      background: isDarkTheme ? '#0F172A' : '#F0F4F8',
+      card: isDarkTheme ? '#1E293B' : '#FFFFFF',
+      text: isDarkTheme ? '#F8FAFC' : '#0F172A',
+      textSub: isDarkTheme ? '#94A3B8' : '#64748B',
+      border: isDarkTheme ? '#334155' : '#E2E8F0',
+      primary: '#3B82F6',
+      success: '#34D399',
+      modalOverlay: isDarkTheme ? 'rgba(0, 0, 0, 0.65)' : 'rgba(0, 0, 0, 0.4)',
+    };
+  }, [isDarkTheme]);
+
+  const styles = useMemo(() => getStyles(theme), [theme]);
 
   const fetchProducts = async () => {
     try {
@@ -40,9 +68,11 @@ export default function FeedScreen() {
     }
   };
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchProducts();
+    }, [])
+  );
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
@@ -61,7 +91,28 @@ export default function FeedScreen() {
       `Purchase ${product.name} for $${product.price}?`,
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Confirm", onPress: () => Alert.alert("Success!", `Order Placed.`) }
+        { 
+          text: "Confirm", 
+          onPress: async () => {
+            try {
+              const res = await fetch("http://10.18.0.192:3000/orders", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  productId: product._id,
+                  productName: product.name,
+                  price: product.price,
+                  buyerEmail: "student@umu.edu",
+                  sellerEmail: product.supplierContact || product.sellerName || "Unknown"
+                })
+              });
+              const text = await res.text();
+              Alert.alert("Success!", text);
+            } catch (err) {
+              Alert.alert("Error", "Could not place order. Is the backend running?");
+            }
+          } 
+        }
       ]
     );
   };
@@ -80,21 +131,68 @@ export default function FeedScreen() {
     };
   };
 
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        setUserAvatar(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Error picking image", error);
+    }
+  };
+
   const renderHeader = () => (
     <View style={styles.headerContainer}>
-      <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
+      <StatusBar barStyle={isDarkTheme ? "light-content" : "dark-content"} backgroundColor={theme.background} />
+      
+      {/* Top Profile Banner & Theme Toggle */}
+      <View style={styles.topProfileBar}>
+        <TouchableOpacity 
+          style={styles.userInfoRow} 
+          onPress={() => setIsProfileModalVisible(true)}
+          activeOpacity={0.7}
+        >
+          <Image 
+            source={{ uri: userAvatar }} 
+            style={styles.userAvatar} 
+          />
+          <View style={styles.userTextCol}>
+            <Text style={styles.greetingText}>Welcome back,</Text>
+            <Text style={styles.userNameText}>{userName}</Text>
+          </View>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.themeToggleBtn} 
+          onPress={() => setIsDarkTheme(!isDarkTheme)}
+        >
+          <IconSymbol 
+            name={isDarkTheme ? "sun.max.fill" : "moon.fill"} 
+            size={24} 
+            color={theme.text} 
+          />
+        </TouchableOpacity>
+      </View>
+
       <Text style={styles.welcomeText}>Campus Market</Text>
       <Text style={styles.subtitle}>Find what you need today.</Text>
       
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <IconSymbol name="magnifyingglass" size={22} color="#94A3B8" style={styles.searchIcon} />
+        <IconSymbol name="magnifyingglass" size={22} color={theme.textSub} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search items..."
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={theme.textSub}
           clearButtonMode="while-editing"
         />
       </View>
@@ -135,7 +233,7 @@ export default function FeedScreen() {
         columnWrapperStyle={styles.row}
         ListEmptyComponent={
            loading ? (
-             <ActivityIndicator size="large" color="#3B82F6" style={{marginTop: 50}} />
+             <ActivityIndicator size="large" color={theme.primary} style={{marginTop: 50}} />
            ) : (
              <View style={styles.emptyContainer}>
                <Text style={styles.emptyText}>No items found.</Text>
@@ -144,11 +242,15 @@ export default function FeedScreen() {
         }
         renderItem={({ item }) => (
           <View style={styles.productCard}>
-            <View style={[styles.imagePlaceholder, { backgroundColor: getRandomColor(item.name) }]}>
-               <Text style={styles.imagePlaceholderText}>
-                 {item.name ? item.name.substring(0, 1).toUpperCase() : '?'}
-               </Text>
-            </View>
+            {item.imageUrl ? (
+               <Image source={{ uri: item.imageUrl }} style={styles.realImagePlaceholder} />
+            ) : (
+               <View style={[styles.imagePlaceholder, { backgroundColor: getRandomColor(item.name) }]}>
+                 <Text style={styles.imagePlaceholderText}>
+                   {item.name ? item.name.substring(0, 1).toUpperCase() : '?'}
+                 </Text>
+               </View>
+            )}
             <View style={styles.productInfo}>
               <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
               <Text style={styles.productPrice}>${item.price}</Text>
@@ -176,7 +278,7 @@ export default function FeedScreen() {
 
       {/* Supplier Modal */}
       <Modal
-        animationType="fade"
+        animationType="slide"
         transparent={true}
         visible={!!selectedSupplierProduct}
         onRequestClose={() => setSelectedSupplierProduct(null)}
@@ -224,6 +326,71 @@ export default function FeedScreen() {
           })()}
         </View>
       </Modal>
+
+      {/* Profile Edit Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isProfileModalVisible}
+        onRequestClose={() => setIsProfileModalVisible(false)}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={[styles.modalContent, { marginTop: 40 }]}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={pickImage} style={{ marginBottom: 16 }}>
+                <Image source={{ uri: userAvatar }} style={styles.supplierAvatar} />
+                <View style={styles.editAvatarBadge}>
+                  <Text style={styles.editAvatarText}>📷</Text>
+                </View>
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Edit Profile</Text>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.modalInputLabel}>Full Name</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={userName}
+                onChangeText={setUserName}
+                placeholderTextColor={theme.textSub}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.modalInputLabel}>Phone Number</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={userPhone}
+                onChangeText={setUserPhone}
+                keyboardType="phone-pad"
+                placeholderTextColor={theme.textSub}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.modalInputLabel}>About Me</Text>
+              <TextInput
+                style={[styles.modalInput, { height: 80, textAlignVertical: 'top' }]}
+                value={userAbout}
+                onChangeText={setUserAbout}
+                multiline={true}
+                placeholderTextColor={theme.textSub}
+              />
+            </View>
+
+            <TouchableOpacity 
+              style={styles.modalCloseButton}
+              onPress={() => setIsProfileModalVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalCloseButtonText}>Save Changes</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -238,270 +405,94 @@ const getRandomColor = (name: string) => {
   return colors[sum % colors.length];
 };
 
-const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#0F172A', // Slate 900 (Deep business blue)
-    paddingTop: 50
-  },
-  headerContainer: { 
-    paddingHorizontal: 20, 
-    paddingTop: 10, 
-    paddingBottom: 5 
-  },
-  welcomeText: { 
-    fontSize: 34, 
-    fontWeight: '800', 
-    color: '#F8FAFC', // Slate 50
-    letterSpacing: -0.5 
-  },
-  subtitle: { 
-    fontSize: 16, 
-    color: '#94A3B8', // Slate 400
-    marginTop: 4, 
-    fontWeight: '500' 
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1E293B', // Slate 800
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: '#334155'
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: { 
-    flex: 1, 
-    fontSize: 16, 
-    color: '#F8FAFC' 
-  },
-  categoryScroll: { 
-    marginTop: 20, 
-    marginBottom: 5,
-  },
-  categoryChip: {
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: '#334155'
-  },
-  activeCategoryChip: { 
-    backgroundColor: '#3B82F6', // Blue 500
-    borderColor: '#3B82F6'
-  },
-  categoryText: { 
-    color: '#94A3B8', 
-    fontWeight: '600', 
-    fontSize: 14 
-  },
-  activeCategoryText: { 
-    color: '#FFFFFF' 
-  },
-  sectionTitle: { 
-    fontSize: 20, 
-    fontWeight: '700', 
-    color: '#F8FAFC', 
-    marginTop: 20, 
-    marginBottom: 10 
-  },
-  row: { 
+const getStyles = (theme: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.background, paddingTop: 50 },
+  headerContainer: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 5 },
+  
+  topProfileBar: { 
+    flexDirection: 'row', 
     justifyContent: 'space-between', 
-    paddingHorizontal: 20 
-  },
-  emptyContainer: { 
     alignItems: 'center', 
-    marginTop: 40 
+    marginBottom: 20 
   },
-  emptyText: { 
-    fontSize: 16, 
-    color: '#94A3B8' 
+  userInfoRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center' 
   },
-  productCard: {
-    width: '48%',
-    backgroundColor: '#1E293B',
-    borderRadius: 16,
-    marginBottom: 15,
-    overflow: 'hidden',
+  userAvatar: { 
+    width: 48, 
+    height: 48, 
+    borderRadius: 24, 
+    backgroundColor: theme.card, 
+    borderWidth: 2, 
+    borderColor: theme.border 
+  },
+  userTextCol: { marginLeft: 12 },
+  greetingText: { fontSize: 13, color: theme.textSub, fontWeight: '600' },
+  userNameText: { fontSize: 16, color: theme.text, fontWeight: '800' },
+  themeToggleBtn: { 
+    padding: 10, 
+    backgroundColor: theme.card, 
+    borderRadius: 22, 
+    borderWidth: 1, 
+    borderColor: theme.border,
     shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
-    borderWidth: 1,
-    borderColor: '#334155'
-  },
-  imagePlaceholder: {
-    width: '100%',
-    height: 120,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imagePlaceholderText: { 
-    fontSize: 40, 
-    color: '#FFF', 
-    fontWeight: '800' 
-  },
-  productInfo: { 
-    padding: 12,
-    paddingBottom: 8
-  },
-  productName: { 
-    fontSize: 16, 
-    fontWeight: '600', 
-    color: '#F8FAFC', 
-    marginBottom: 4 
-  },
-  productPrice: { 
-    fontSize: 16, 
-    color: '#34D399', // Emerald 400
-    fontWeight: '800' 
-  },
-  actionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-  },
-  supplierButton: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#3B82F6', // Blue outline
-    marginRight: 6,
-    paddingVertical: 8,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  supplierButtonText: { 
-    color: '#3B82F6', 
-    fontSize: 12, 
-    fontWeight: '700' 
-  },
-  buyButton: {
-    flex: 1,
-    backgroundColor: '#3B82F6', 
-    paddingVertical: 8,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#3B82F6',
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.1,
     shadowRadius: 5,
-    shadowOffset: { width: 0, height: 3 },
-  },
-  buyButtonText: { 
-    color: '#FFF', 
-    fontSize: 12, 
-    fontWeight: '700' 
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3
   },
 
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24
-  },
-  modalContent: {
-    backgroundColor: '#1E293B',
-    borderRadius: 24,
-    width: '100%',
-    padding: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
-    borderWidth: 1,
-    borderColor: '#334155'
-  },
-  modalHeader: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  supplierAvatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 4 },
-    borderWidth: 2,
-    borderColor: '#334155'
-  },
-  supplierAvatarText: {
-    fontSize: 32,
-    color: '#FFF',
-    fontWeight: '800'
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#F8FAFC',
-    textAlign: 'center'
-  },
-  modalBodyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155'
-  },
-  modalLabel: {
-    fontSize: 16,
-    color: '#94A3B8',
-    fontWeight: '600'
-  },
-  modalValue: {
-    fontSize: 16,
-    color: '#F8FAFC',
-    fontWeight: '700'
-  },
-  controlTag: {
-    backgroundColor: 'rgba(52, 211, 153, 0.1)',
-    alignSelf: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginTop: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(52, 211, 153, 0.3)'
-  },
-  controlTagText: {
-    color: '#34D399',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase'
-  },
-  modalCloseButton: {
-    backgroundColor: '#3B82F6',
-    marginTop: 24,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: 'center',
-    shadowColor: '#3B82F6',
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 }
-  },
-  modalCloseButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '800'
-  }
+  welcomeText: { fontSize: 34, fontWeight: '800', color: theme.text, letterSpacing: -0.5 },
+  subtitle: { fontSize: 16, color: theme.textSub, marginTop: 4, fontWeight: '500' },
+  
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.card, borderRadius: 12, paddingHorizontal: 15, paddingVertical: 12, marginTop: 20, borderWidth: 1, borderColor: theme.border },
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 16, color: theme.text },
+  
+  categoryScroll: { marginTop: 20, marginBottom: 5 },
+  categoryChip: { backgroundColor: theme.card, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginRight: 10, borderWidth: 1, borderColor: theme.border },
+  activeCategoryChip: { backgroundColor: theme.primary, borderColor: theme.primary },
+  categoryText: { color: theme.textSub, fontWeight: '600', fontSize: 14 },
+  activeCategoryText: { color: '#FFF' },
+  
+  sectionTitle: { fontSize: 20, fontWeight: '700', color: theme.text, marginTop: 20, marginBottom: 10 },
+  row: { justifyContent: 'space-between', paddingHorizontal: 20 },
+  emptyContainer: { alignItems: 'center', marginTop: 40 },
+  emptyText: { fontSize: 16, color: theme.textSub },
+  
+  productCard: { width: '48%', backgroundColor: theme.card, borderRadius: 16, marginBottom: 15, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 4, borderWidth: 1, borderColor: theme.border },
+  imagePlaceholder: { width: '100%', height: 120, justifyContent: 'center', alignItems: 'center' },
+  realImagePlaceholder: { width: '100%', height: 120, resizeMode: 'cover', borderBottomWidth: 1, borderBottomColor: theme.border },
+  imagePlaceholderText: { fontSize: 40, color: '#FFF', fontWeight: '800' },
+  productInfo: { padding: 12, paddingBottom: 8 },
+  productName: { fontSize: 16, fontWeight: '600', color: theme.text, marginBottom: 4 },
+  productPrice: { fontSize: 16, color: theme.success, fontWeight: '800' },
+  actionRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, paddingBottom: 12 },
+  
+  supplierButton: { flex: 1, backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.primary, marginRight: 6, paddingVertical: 8, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  supplierButtonText: { color: theme.primary, fontSize: 12, fontWeight: '700' },
+  buyButton: { flex: 1, backgroundColor: theme.primary, paddingVertical: 8, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  buyButtonText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  
+  modalOverlay: { flex: 1, backgroundColor: theme.modalOverlay, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalContent: { backgroundColor: theme.card, borderRadius: 24, width: '100%', padding: 24, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 10, borderWidth: 1, borderColor: theme.border },
+  modalHeader: { alignItems: 'center', marginBottom: 24 },
+  supplierAvatar: { width: 72, height: 72, borderRadius: 36, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, shadowOffset: { width: 0, height: 4 }, borderWidth: 2, borderColor: theme.border },
+  supplierAvatarText: { fontSize: 32, color: '#FFF', fontWeight: '800' },
+  modalTitle: { fontSize: 24, fontWeight: '800', color: theme.text, textAlign: 'center' },
+  modalBodyRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.border },
+  modalLabel: { fontSize: 16, color: theme.textSub, fontWeight: '600' },
+  modalValue: { fontSize: 16, color: theme.text, fontWeight: '700' },
+  controlTag: { backgroundColor: 'rgba(52, 211, 153, 0.1)', alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginTop: 24, borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.3)' },
+  controlTagText: { color: theme.success, fontSize: 12, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase' },
+
+  inputGroup: { width: '100%', marginBottom: 16 },
+  modalInputLabel: { fontSize: 14, color: theme.textSub, fontWeight: '600', marginBottom: 6, marginLeft: 4 },
+  modalInput: { width: '100%', backgroundColor: theme.background, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, color: theme.text, fontSize: 16 },
+  editAvatarBadge: { position: 'absolute', bottom: 0, right: -5, backgroundColor: theme.card, borderRadius: 14, width: 28, height: 28, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: theme.border, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2 },
+  editAvatarText: { fontSize: 14 },
+  
+  modalCloseButton: { backgroundColor: theme.primary, marginTop: 15, paddingVertical: 14, borderRadius: 14, alignItems: 'center', shadowColor: theme.primary, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  modalCloseButtonText: { color: '#FFF', fontSize: 16, fontWeight: '800' }
 });

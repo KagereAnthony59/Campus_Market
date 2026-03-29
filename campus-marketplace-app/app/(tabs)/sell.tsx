@@ -1,12 +1,41 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StatusBar } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SellScreen() {
   const [productName, setProductName] = useState('');
   const [productPrice, setProductPrice] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [supplierEmail, setSupplierEmail] = useState('');
+  const [supplierName, setSupplierName] = useState('');
+
+  useEffect(() => {
+    // Check async storage dynamically if user switches tabs
+    const fetchSupplier = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('supplierAccount');
+        if (stored) {
+          const acc = JSON.parse(stored);
+          setSupplierEmail(acc.email);
+          setSupplierName(acc.name);
+        } else {
+          setSupplierEmail('');
+          setSupplierName('');
+        }
+      } catch (e) {}
+    };
+    
+    // Polling here is a quick hack to keep tabs synced in expo-router
+    const interval = setInterval(fetchSupplier, 1500);
+    fetchSupplier();
+    return () => clearInterval(interval);
+  }, []);
 
   const sendPostRequest = async () => {
+    if (!supplierEmail) {
+      Alert.alert("Supplier Required", "Please create a Supplier Portal account via the Portal tab first before listing an item.");
+      return;
+    }
     if (!productName || !productPrice) {
       Alert.alert("Missing Fields", "Please fill out all fields.");
       return;
@@ -17,7 +46,12 @@ export default function SellScreen() {
       const response = await fetch("http://10.18.0.192:3000/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: productName, price: parseInt(productPrice) })
+        body: JSON.stringify({ 
+          name: productName, 
+          price: parseInt(productPrice),
+          sellerName: supplierName,
+          supplierContact: supplierEmail
+        })
       });
       const data = await response.text();
       Alert.alert("Success", data);
@@ -38,7 +72,12 @@ export default function SellScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
       <View style={styles.formCard}>
         <Text style={styles.title}>List an Item</Text>
-        <Text style={styles.subtitle}>Fill in the details below to sell your product to the campus.</Text>
+        
+        {supplierEmail ? (
+           <Text style={styles.subtitle}>Posting as verified supplier: {supplierName}</Text>
+        ) : (
+           <Text style={styles.warningText}>You must log in through the Portal tab first.</Text>
+        )}
         
         <Text style={styles.label}>Product Name</Text>
         <TextInput 
@@ -100,10 +139,16 @@ const styles = StyleSheet.create({
     color: '#F8FAFC' 
   },
   subtitle: {
-    fontSize: 15,
-    color: '#94A3B8',
+    fontSize: 14,
+    color: '#34D399',
     marginBottom: 24,
-    lineHeight: 22
+    fontWeight: '600'
+  },
+  warningText: {
+    fontSize: 14,
+    color: '#EF4444',
+    marginBottom: 24,
+    fontWeight: '700'
   },
   label: {
     fontSize: 14,

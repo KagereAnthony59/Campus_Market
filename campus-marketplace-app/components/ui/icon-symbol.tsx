@@ -20,6 +20,9 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'plus.app.fill': 'add-circle',
   'magnifyingglass': 'search',
+  'sun.max.fill': 'wb-sunny',
+  'moon.fill': 'nightlight-round',
+  'person.crop.circle.fill': 'person',
 } as IconMapping;
 
 /**
